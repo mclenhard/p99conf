@@ -1,0 +1,148 @@
+#service account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  creationTimestamp: null
+  name: p99conf-sa
+  namespace: default
+---
+#clusterrole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: p99conf
+rules:
+  - apiGroups: ["", "metrics.k8s.io","apps"]
+    resources: ["*"]
+    verbs: ["get","watch","list"]
+
+---
+#clusterrolebinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  creationTimestamp: null
+  name: p99conf
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: p99conf
+subjects:
+  - kind: ServiceAccount
+    name: p99conf-sa
+    namespace: default
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: p99conf
+  labels:
+    app: p99conf
+spec:
+  selector:
+    matchLabels:
+      name: p99conf
+  template:
+    metadata:
+      labels:
+        name: p99conf
+    spec:
+      serviceAccount: p99conf-sa
+      containers:
+        - name: p99conf
+          image: containiq/p99conf
+          imagePullPolicy: Always
+          command: [ "/bin/bash", "-c", "--" ]
+          args: [ "while true; do sleep 30; done;" ]
+          resources:
+            requests:
+              ephemeral-storage: "2Gi"
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          securityContext:
+            privileged: true
+            capabilities:
+              add: [ "SYS_ADMIN","NET_ADMIN" ]
+          volumeMounts:
+            - name: lsb-release
+              mountPath: /etc/lsb-release.host
+              readOnly: false
+            - name: os-release
+              mountPath: /etc/os-release.host
+              readOnly: false
+            - name: modules-dir
+              mountPath: /lib/modules
+              readOnly: false
+            - name: modules-host
+              mountPath: /lib/modules.host
+              readOnly: false
+            - name: linux-headers-generated
+              mountPath: /usr/src/
+              readOnly: false
+            - name: boot-host
+              mountPath: /boot.host
+              readOnly: false
+            - name: debug
+              mountPath: /sys/kernel/debug
+              readOnly: false
+            - name: host-root
+              mountPath: /host # mount the root from host to /host
+              readOnly: false
+      hostNetwork: true
+      hostPID: true
+      initContainers:
+        - name: init-headers
+          image: containiq/bcc-linux-headers
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+          volumeMounts:
+            - name: lsb-release
+              mountPath: /etc/lsb-release.host
+              readOnly: false
+            - name: os-release
+              mountPath: /etc/os-release.host
+              readOnly: false
+            - name: modules-dir
+              mountPath: /lib/modules
+              readOnly: false
+            - name: modules-host
+              mountPath: /lib/modules.host
+              readOnly: false
+            - name: linux-headers-generated
+              mountPath: /usr/src/
+              readOnly: false
+            - name: boot-host
+              mountPath: /boot.host
+              readOnly: false
+            - name: host-root
+              mountPath: /host # mount the root from host to /host
+      volumes:
+        - name: lsb-release
+          hostPath:
+            path: /etc/lsb-release
+        - name: os-release
+          hostPath:
+            path: /etc/os-release
+        - name: modules-dir
+          hostPath:
+            path: /var/cache/linux-headers/modules_dir
+        - name: linux-headers-generated
+          hostPath:
+            path: /var/cache/linux-headers/generated
+        - name: boot-host
+          hostPath:
+            path: /
+        - name: modules-host
+          hostPath:
+            path: /lib/modules
+        - name: debug
+          hostPath:
+            path: /sys/kernel/debug
+        - name: host-root
+          hostPath:
+            path: /
